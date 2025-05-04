@@ -1,0 +1,11 @@
+image_size: 32
+latent_dim: 16
+informative_dims: [0, 1, 4, 8]
+epochs: 30
+accelerator: gpu
+devices: 1
+logger: False
+learning_rate: 0.001
+batch_size: 64
+data_path: data/synth_data_0148_32x32_big.pt
+csv_path: data/synth_data_0148_32x32_big.csv

@@ -1,0 +1,4 @@
+image_size: 32
+keep_layers: [0, 1, 4, 8]
+samples: 10000
+base_path: ./data/synth_data_0148_32x32_big

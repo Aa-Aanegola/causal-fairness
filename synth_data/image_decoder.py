@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from torch import nn
 
-class Decoder(nn.Module):
+class ImageDecoder(nn.Module):
     def __init__(self, image_size=32, keep_layers=None):
         super().__init__()
         self.image_size = image_size

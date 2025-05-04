@@ -12,4 +12,8 @@ plots/
 *.Rproj
 *.pth
 *.pkl
+*.pt
 **__pycache__**
+*lightning_logs*
+*checkpoints*
+*.log
