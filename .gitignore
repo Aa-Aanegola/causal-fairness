@@ -1,0 +1,15 @@
+MIMIC-CXR-JPG/
+miniconda3/
+mimic_demo/
+ricu/
+ricu_data/
+Rlib
+Rplots.pdf
+plots/
+*.png
+*.csv
+.Rhistory
+*.Rproj
+*.pth
+*.pkl
+**__pycache__**
