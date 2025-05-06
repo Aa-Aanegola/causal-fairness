@@ -1,19 +1,43 @@
 data:
-  dataset_root: /local/eb/aa5506/MIMIC-CXR-JPG/mimic-cxr-jpg/2.1.0/files/  
-  annotations_csv: /local/eb/aa5506/MIMIC-CXR-JPG/mimic-cxr-jpg/2.1.0/mimic-cxr-2.0.0-metadata.csv
-  allowed_views: ['AP', 'PA']
-  image_size: 224
+  # dataset_root: /local/eb/aa5506/MIMIC-CXR-JPG/mimic-cxr-jpg/2.1.0/files/  
+  # annotations_csv: /local/eb/aa5506/MIMIC-CXR-JPG/mimic-cxr-jpg/2.1.0/mimic-cxr-2.0.0-metadata.csv
+  # allowed_views: ['AP', 'PA']
+  # image_size: 224
+  # num_workers: 8
+  path: /insomnia001/depts/edu/COMSE6998/aa5506/causal-fairness/synth_data/data/synth_data_0148_32x32_big.pt
+  batch_size: 256
+  image_size: 32
   num_workers: 8
+  val_ratio: 0.2
 
 simclr:
-  encoder_arch: resnet18
-  projection_dim: 128
-  batch_size: 256
-  epochs: 100
-  temperature: 0.5
-  learning_rate: 1e-3
-  weight_decay: 1e-6
-  save_dir: ./ckpt/
+  encoder:
+    arch: resnet
+    in_channels: 1
+    resnet_layers: [1, 1, 1, 1]
+    bottleneck_dim: 128
+
+  projection_head:
+    hidden_dim: 128
+    output_dim: 128
+
+  loss:
+    temperature: 0.05
+    lambda_uniformity: 0.4
+
+  optimizer:
+    name: sgd
+    lr: 0.03
+    momentum: 0.9
+    weight_decay: 0.0001
+    max_epochs: 1000
+  
+  pl: 
+    log_progress_bar: false
+    enable_progress_bar: false
+
+  
+  save_dir: ckpt/
 
 oracle:
   encoder_arch: densenet121
@@ -46,3 +70,4 @@ logging:
   eval_interval: 1
   results_dir: /path/to/results/
   seed: 42
+  enable_progress_bar: false

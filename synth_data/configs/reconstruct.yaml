@@ -7,5 +7,5 @@ devices: 1
 logger: False
 learning_rate: 0.001
 batch_size: 64
-data_path: data/synth_data_0148_32x32_big.pt
-csv_path: data/synth_data_0148_32x32_big.csv
+data_path: data/synth_data_0148_32x32.pt
+csv_path: data/synth_data_0148_32x32.csv

@@ -4,7 +4,7 @@ all_plots <- function(path, plot_path, img_dim=32, latent_dim=16, valid_latents 
     library(ggplot2)
 
     if (is.na(valid_latents)) {
-        valid_latents <- 0:latent_dim-1
+        valid_latents <- 0:(latent_dim-1)
     }
 
     df <- read.csv(path)
