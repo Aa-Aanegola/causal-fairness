@@ -36,38 +36,39 @@ simclr:
     log_progress_bar: false
     enable_progress_bar: false
 
-  
-  save_dir: ckpt/
+  save_dir: ckpt/encoder
 
 oracle:
-  encoder_arch: densenet121
-  pretrained_weights: torchxrayvision
-  freeze_encoder: true
-  hidden_dim: 256
-  dropout: 0.1
-  lr: 1e-3
-  batch_size: 32
-  epochs: 25
-  save_path: ./here
+  in_channels: 1
+  covariate_dim: 2
+  hidden_dim: 128
+  lr: 0.001
+  weight_decay: 0.0001
+  batch_size: 64
+  max_epochs: 20
+  save_dir: ./ckpt/oracle
+
+  pl: 
+    log_progress_bar: true
 
 student:
-  encoder_init: /path/to/simclr/checkpoints/best.pt
+  encoder_ckpt: /insomnia001/depts/edu/COMSE6998/aa5506/causal-fairness/feature_extractors/SimCLR/ckpt/encoder/simclr-epoch=487-train_loss_ssl=0.6879.ckpt
+  teacher_ckpt: /insomnia001/depts/edu/COMSE6998/aa5506/causal-fairness/feature_extractors/SimCLR/ckpt/oracle/teacher-epoch=24-val_loss=0.16.ckpt
   fine_tune_encoder: true
-  hidden_dim: 128
-  output_dim: 1
-  lr: 1e-3
-  batch_size: 32
-  epochs: 50
-  save_path: /path/to/student.pt
+  hidden_dim: 32
+  covariate_dim: 2
+  lr: 0.001
+  batch_size: 64
+  max_epochs: 10
+  save_dir: ./ckpt/student
+  lambda_sup: 0.5
+  lambda_align: 1
 
-sufficiency:
-  lambda: 1.0          
-  compress_l2: 0.01            
-  representation_dim: 64 
+  pl: 
+    log_progress_bar: true
 
 logging:
   log_interval: 10
   eval_interval: 1
-  results_dir: /path/to/results/
   seed: 42
-  enable_progress_bar: false
+  enable_progress_bar: true

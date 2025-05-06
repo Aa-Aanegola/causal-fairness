@@ -1,8 +1,10 @@
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
+import torch.nn.functional as F
 from lightly.loss import NTXentLoss
 from lightly.models.modules.heads import SimCLRProjectionHead
+from torchmetrics.classification import BinaryAUROC, BinaryF1Score, BinaryPrecision, BinaryRecall
 
 def uniformity_loss(z, t=2):
     z = torch.nn.functional.normalize(z, dim=1)
@@ -153,3 +155,203 @@ class SimCLRModel(pl.LightningModule):
         )
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, T_max=opt_cfg['max_epochs'])
         return [optim], [scheduler]
+
+
+
+class TeacherModel(pl.LightningModule):
+    def __init__(self, cfg):
+        super().__init__()
+        self.save_hyperparameters()
+        
+        self.cfg = cfg
+
+        self.image_encoder = nn.Sequential(
+            nn.Conv2d(self.cfg['in_channels'], 32, 3, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, 3, stride=2, padding=1),
+            nn.ReLU(),
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten()
+        )
+
+        self.classifier = nn.Sequential(
+            nn.Linear(64 + self.cfg['covariate_dim'], self.cfg['hidden_dim']),
+            nn.ReLU(),
+            nn.Linear(self.cfg['hidden_dim'], 2)
+        )
+
+        self.loss_fn = nn.CrossEntropyLoss()
+        
+        self.auroc = BinaryAUROC()
+        self.f1 = BinaryF1Score()
+        self.precision = BinaryPrecision()
+        self.recall = BinaryRecall()
+
+    def forward(self, image, covariates):
+        feat = self.image_encoder(image)
+        xz = torch.cat([feat, covariates.squeeze()], dim=1)
+        return self.classifier(xz)
+
+    def training_step(self, batch, batch_idx):
+        image, x, z, y = batch['image'], batch['x'], batch['z'], batch['y']
+        covars = torch.stack([x, z], dim=1).float()
+        logits = self(image, covars)
+        loss = self.loss_fn(logits, y)
+        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=self.cfg['pl']['log_progress_bar'])
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        image, x, z, y = batch['image'], batch['x'], batch['z'], batch['y']
+        covars = torch.stack([x, z], dim=1).float()
+        logits = self(image, covars)
+        loss = self.loss_fn(logits, y)
+        
+        preds = torch.softmax(logits, dim=1)[:, 1]
+        class_preds = (preds > 0.5).long()
+
+        acc = (class_preds == y).float().mean()
+        self.auroc.update(preds, y)
+        self.f1.update(class_preds, y)
+        self.precision.update(class_preds, y)
+        self.recall.update(class_preds, y)
+        
+        self.log_dict({"val_loss": loss, "val_acc": acc}, on_epoch=True, prog_bar=self.cfg['pl']['log_progress_bar'])
+        
+    def on_validation_epoch_end(self):
+        self.log_dict({
+            "val_auroc": self.auroc.compute(),
+            "val_f1": self.f1.compute(),
+            "val_precision": self.precision.compute(),
+            "val_recall": self.recall.compute(),
+        }, on_epoch=True, prog_bar=self.cfg['pl'].get('log_progress_bar', True))
+
+        self.auroc.reset()
+        self.f1.reset()
+        self.precision.reset()
+        self.recall.reset()
+
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(), lr=self.cfg['lr'], weight_decay=self.cfg['weight_decay'])
+    
+class StudentModel(pl.LightningModule):
+    def __init__(self, cfg):
+        super().__init__()
+        self.save_hyperparameters()
+        
+        self.cfg = cfg
+        
+        self.encoder = SimCLRModel.load_from_checkpoint(cfg['encoder_ckpt'])
+        encoder_dim = self.encoder.cfg['encoder']['bottleneck_dim']
+        self.encoder = self.encoder.backbone
+    
+        
+        self.classifier = nn.Sequential(
+            nn.Linear(encoder_dim+cfg['covariate_dim'], cfg['hidden_dim']),
+            nn.ReLU(),
+            nn.Linear(cfg['hidden_dim'], 2)
+        )
+    
+    def forward(self, image, covariates):
+        z = self.encoder(image)
+        xz = torch.cat([z, covariates.squeeze()], dim=1)
+        return self.classifier(xz)
+    
+    def embed(self, image):
+        return self.encoder(image)
+    
+class StudentTrainer(pl.LightningModule):
+    def __init__(self, cfg):
+        super().__init__()
+        self.save_hyperparameters()
+
+        self.cfg = cfg
+        self.student = StudentModel(cfg)
+
+        self.teacher = TeacherModel.load_from_checkpoint(cfg['teacher_ckpt'])
+        self.teacher.freeze()
+
+        self.loss_supervised = nn.CrossEntropyLoss()
+        
+        self.auroc = BinaryAUROC()
+        self.f1 = BinaryF1Score()
+        self.precision = BinaryPrecision()
+        self.recall = BinaryRecall()
+    
+    def js_divergence(self, student_logits, teacher_logits):
+        p = F.softmax(student_logits, dim=1)
+        q = F.softmax(teacher_logits, dim=1)
+        m = 0.5 * (p + q)
+        return 0.5 * (F.kl_div(p.log(), m, reduction='batchmean') +
+                    F.kl_div(q.log(), m, reduction='batchmean'))
+
+    def training_step(self, batch, batch_idx):
+        image, x, z, y = batch['image'], batch['x'], batch['z'], batch['y']
+        covars = torch.stack([x, z], dim=1).float()
+
+        logits_student = self.student(image, covars)
+        logits_teacher = self.teacher(image, covars).detach()
+
+        loss_sup = self.loss_supervised(logits_student, y)
+        loss_align = self.js_divergence(logits_student, logits_teacher)
+
+        loss = self.cfg['lambda_sup'] * loss_sup + self.cfg['lambda_align'] * loss_align
+
+        self.log_dict({
+            "train_loss": loss,
+            "loss_sup": loss_sup,
+            "loss_align": loss_align
+        }, on_epoch=True, prog_bar=self.cfg['pl']['log_progress_bar'])
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        image, x, z, y = batch['image'], batch['x'], batch['z'], batch['y']
+        covars = torch.stack([x, z], dim=1).float()
+
+        logits_student = self.student(image, covars)
+        logits_teacher = self.teacher(image, covars).detach()
+
+        loss_sup = self.loss_supervised(logits_student, y)
+        loss_align = self.js_divergence(logits_student, logits_teacher)
+
+        loss = self.cfg['lambda_sup'] * loss_sup + self.cfg['lambda_align'] * loss_align
+
+        preds = torch.softmax(logits_student, dim=1)[:, 1]
+        class_preds = (preds > 0.5).long()
+        acc = (class_preds == y).float().mean()
+        
+        self.auroc.update(preds, y)
+        self.f1.update(class_preds, y)
+        self.precision.update(class_preds, y)
+        self.recall.update(class_preds, y)
+        
+
+        self.log_dict({
+            "val_loss": loss,
+            "loss_sup": loss_sup,
+            "loss_align": loss_align,
+            "val_acc": acc
+        }, on_epoch=True, prog_bar=self.cfg['pl']['log_progress_bar'])
+        return loss
+    
+    def on_validation_epoch_end(self):
+        self.log_dict({
+            "val_auroc": self.auroc.compute(),
+            "val_f1": self.f1.compute(),
+            "val_precision": self.precision.compute(),
+            "val_recall": self.recall.compute(),
+        }, on_epoch=True)
+
+        self.auroc.reset()
+        self.f1.reset()
+        self.precision.reset()
+        self.recall.reset()
+
+    def configure_optimizers(self):
+        encoder_params = list(self.student.encoder.parameters())
+        classifier_params = list(self.student.classifier.parameters())
+
+        optimizer = torch.optim.Adam([
+            {'params': encoder_params, 'lr': self.cfg['lr'] * 0.1},
+            {'params': classifier_params, 'lr': self.cfg['lr']},
+        ])
+        return optimizer

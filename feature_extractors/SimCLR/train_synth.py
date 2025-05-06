@@ -14,6 +14,7 @@ import torchvision.transforms as T
 from model import SimCLRModel 
 # from utils import CXRSelfSupervisedDataset
 from utils import SimCLRGrayscaleTransform
+from utils import ImgDataset, preprocess_img
 
 torch.set_float32_matmul_precision('high')
 
@@ -22,30 +23,6 @@ with open("cfg.yaml", "r") as f:
 
 simclr_cfg = cfg["simclr"]
 data_cfg = cfg["data"]
-
-def preprocess_img(img):
-    img_mean = img.mean()
-    img_std = img.std() + 1e-8
-    img = (img - img_mean) / img_std
-    return img
-
-class ImgDataset(Dataset):
-    def __init__(self, data, target, transform=None):
-        self.data = data
-        self.target = target
-        self.transform = transform
-        
-    def __len__(self):
-        return len(self.data)
-    
-    def __getitem__(self, index):
-        x = to_pil_image(self.data[index])
-        if self.transform:
-            x = self.transform(x)
-        
-        y = self.target[index]
-            
-        return x, y
 
 data = torch.load(data_cfg['path'])
 data['image'] = preprocess_img(data['image'])
