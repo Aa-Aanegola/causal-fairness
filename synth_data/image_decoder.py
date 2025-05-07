@@ -56,9 +56,9 @@ class ImageDecoder(nn.Module):
             img += w[6]
 
             # Gaussian blob offset (w[7])
-            bx = self.cx + int(w[7] * 4)
-            by = self.cy + int(w[7] * 4)
-            sigma = 4 + torch.abs(w[7]) * 3
+            bx = self.cx + int(w[7] * 5)
+            by = self.cy + int(w[7] * 5)
+            sigma = 4 + torch.abs(w[7]) * 5
             g = torch.exp(-((self.xx - bx) ** 2 + (self.yy - by) ** 2) / (2 * sigma ** 2))
             img += g
 
@@ -78,11 +78,11 @@ class ImageDecoder(nn.Module):
 
             # Radial angle pattern (w[11])
             theta = torch.atan2(self.yy - self.cy, self.xx - self.cx)
-            img += 0.5 * torch.sin(theta * w[11] * 3)
+            img += 0.5 * torch.sin(theta * w[11] * 4)
 
             # Optional: Add noise (w[12]) — skip if `use_noise=False`
             if self.use_noise:
-                img += torch.randn_like(img) * 0.1 * w[12]
+                img += torch.randn_like(img) * 0.2 * w[12]
 
             # Optional: Texture grain (w[13])
             if self.use_noise:

@@ -34,7 +34,7 @@ all_plots <- function(path, plot_path, img_dim=32, latent_dim=16, valid_latents 
     p <- autoplot(fair_decomp_img)
     ggsave(paste0(plot_path, "/tv_img.png"), plot=p)
     # p <- autoplot(fair_decomp_emb)
-    # ggsave(paste0(plot_path, "/tv_emb.png"), plot=p)
+    # ggsave(paste0(plot_path, "/tv_emb.png"), plot=)p
 
     for (decomp in decompositions) {
         p <- autoplot(fair_decomp, decomp=decomp)
