@@ -1,115 +1,102 @@
-import numpy as np
 import torch
-from torch import nn
+import torch.nn as nn
 
 class ImageDecoder(nn.Module):
-    def __init__(self, image_size=32, keep_layers=None):
+    def __init__(self, image_size=32, use_noise=True):
         super().__init__()
         self.image_size = image_size
+        self.use_noise = use_noise
+        
+        # Create meshgrid
         self.xx, self.yy = torch.meshgrid(
             torch.arange(image_size), torch.arange(image_size), indexing='ij'
         )
+        self.xx = self.xx.float()
+        self.yy = self.yy.float()
         self.cx, self.cy = image_size // 2, image_size // 2
-        
-        if keep_layers is None:
-            self.keep_layers = range(16)
-        else:
-            self.keep_layers = keep_layers
 
     def forward(self, W):
         """
-        W: Tensor of shape (B, 16)
-        Returns: Tensor of shape (B, 1, H, W)
+        Args:
+            W: Tensor of shape (B, 16)
+        Returns:
+            images: Tensor of shape (B, 1, H, W)
         """
         B = W.shape[0]
         H, W_ = self.image_size, self.image_size
-        xx, yy = self.xx.float(), self.yy.float()
-
         imgs = []
+
         for i in range(B):
             w = W[i]
             img = torch.zeros((H, W_))
 
-            if 0 in self.keep_layers:
-                # Circle radius
-                r = ((xx - self.cx)**2 + (yy - self.cy)**2).sqrt()
-                img += torch.clamp((w[0] * 5 - r), min=0, max=1)
+            # Circle radius (w[0]): controls size of central circular blob
+            r = ((self.xx - self.cx) ** 2 + (self.yy - self.cy) ** 2).sqrt()
+            img += torch.clamp(w[0] * 6 - r, min=0, max=1)
 
-            if 1 in self.keep_layers:
-                # Square
-                half = int(torch.clamp(torch.abs(w[1]) * 8, 2, 12).item())
-                img[self.cy - half:self.cy + half, self.cx - half:self.cx + half] += 0.5
+            # Square sharpness (w[1])
+            half = int(torch.clamp(torch.abs(w[1]) * 8 + 2, 2, 12).item())
+            img[self.cy - half:self.cy + half, self.cx - half:self.cx + half] += 0.5
 
-            if 2 in self.keep_layers:
-                # Vertical stripes
-                img += 0.5 * torch.sin((w[2] * 10) * torch.pi * xx / H)
+            # Vertical frequency stripes (w[2])
+            img += 0.5 * torch.sin(w[2] * 2 * torch.pi * self.xx / H)
 
-            if 3 in self.keep_layers:
-                # Horizontal stripes
-                img += 0.5 * torch.sin((w[3] * 10) * torch.pi * yy / H)
+            # Horizontal frequency stripes (w[3])
+            img += 0.5 * torch.sin(w[3] * 2 * torch.pi * self.yy / H)
 
-            if 4 in self.keep_layers:
-                img += 0.5 * torch.sin((w[4] * 5) * torch.pi * (xx + yy) / (2 * H))
+            # Diagonal wave (w[4])
+            diag = (self.xx + self.yy) / 2
+            img += 0.5 * torch.sin(w[4] * torch.pi * diag / H)
 
+            # Spatial warp (w[5])
+            warp = torch.sin((self.yy + w[5] * 10) * torch.pi / H)
+            img += 0.5 * warp
 
-            if 5 in self.keep_layers:
-                # Sinusoidal warp
-                warp = torch.sin((yy + w[5] * 10) * torch.pi / H)
-                img += 0.5 * warp
+            # Brightness offset (w[6])
+            img += w[6]
 
-            if 6 in self.keep_layers:
-                # Brightness offset
-                img += w[6]
+            # Gaussian blob offset (w[7])
+            bx = self.cx + int(w[7] * 4)
+            by = self.cy + int(w[7] * 4)
+            sigma = 4 + torch.abs(w[7]) * 3
+            g = torch.exp(-((self.xx - bx) ** 2 + (self.yy - by) ** 2) / (2 * sigma ** 2))
+            img += g
 
-            if 7 in self.keep_layers:
-                # Gaussian blob
-                bx = int(self.cx + w[7] * 5)
-                by = int(self.cy + w[7] * 5)
-                sigma = 4 + torch.abs(w[7]) * 4
-                g = torch.exp(-((xx - bx)**2 + (yy - by)**2) / (2 * sigma**2))
-                img += g
+            # XOR ring (w[8])
+            ring_mask = ((r - w[8] * 10) ** 2 < 10).float()
+            img += ring_mask
 
-            if 8 in self.keep_layers:
-                # XOR ring
-                ring = ((r - w[8] * 10)**2 < 10).float()
-                img += ring
+            # Checkerboard size (w[9])
+            cb_size = int(torch.clamp(torch.abs(w[9]) * 8 + 2, 2, 16).item())
+            cb = ((self.xx // cb_size + self.yy // cb_size) % 2) * 0.3
+            img += cb
 
-            if 9 in self.keep_layers:
-                # Checkerboard
-                cb_size = int(torch.clamp(torch.abs(w[9]) * 8 + 2, 2, 16).item())
-                cb = ((xx // cb_size + yy // cb_size) % 2) * 0.3
-                img += cb
+            # Diagonal bar (w[10])
+            angle = w[10] * torch.pi
+            rot_line = torch.cos(angle) * (self.xx - self.cx) + torch.sin(angle) * (self.yy - self.cy)
+            img += (torch.abs(rot_line) < 3).float() * 0.6
 
-            if 10 in self.keep_layers:
-                # Diagonal bar
-                angle = w[10] * torch.pi
-                rot_line = torch.cos(angle) * (xx - self.cx) + torch.sin(angle) * (yy - self.cy)
-                img += ((torch.abs(rot_line) < 3).float() * 0.6)
+            # Radial angle pattern (w[11])
+            theta = torch.atan2(self.yy - self.cy, self.xx - self.cx)
+            img += 0.5 * torch.sin(theta * w[11] * 3)
 
-            if 11 in self.keep_layers:
-                # Radial pattern
-                theta = torch.atan2(yy - self.cy, xx - self.cx)
-                img += 0.5 * torch.sin(theta * w[11] * 5)
-
-            if 12 in self.keep_layers:
-                # Add noise
+            # Optional: Add noise (w[12]) — skip if `use_noise=False`
+            if self.use_noise:
                 img += torch.randn_like(img) * 0.1 * w[12]
 
-            if 13 in self.keep_layers:
-                # Texture grain
+            # Optional: Texture grain (w[13])
+            if self.use_noise:
                 grain = torch.rand_like(img)
-                img += (grain - 0.5) * w[13] * 0.05
+                img += (grain - 0.5) * w[13] * 0.2
 
-            if 14 in self.keep_layers:
-                # # Contrast
-                img = (img - 0.5) * (1 + w[14]) + 0.5
+            # Contrast adjustment (w[14])
+            img = (img - 0.5) * (1 + w[14]) + 0.5
 
-            if 15 in self.keep_layers:
-                # Invert
-                if w[15] > 0:
-                    img = 1.0 - img
+            # Invert (w[15])
+            if w[15] > 0:
+                img = 1.0 - img
 
-            # Normalize and clamp
+            # Normalize
             img = (img - img.min()) / (img.max() - img.min() + 1e-8)
             imgs.append(img.unsqueeze(0))
 

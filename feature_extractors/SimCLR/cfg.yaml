@@ -4,7 +4,7 @@ data:
   # allowed_views: ['AP', 'PA']
   # image_size: 224
   # num_workers: 8
-  path: /insomnia001/depts/edu/COMSE6998/aa5506/causal-fairness/synth_data/data/synth_data_0148_32x32_big.pt
+  path: /insomnia001/depts/edu/COMSE6998/aa5506/causal-fairness/synth_data/data/synth_data_01481011.pt
   batch_size: 256
   image_size: 32
   num_workers: 8
