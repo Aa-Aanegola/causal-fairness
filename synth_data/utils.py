@@ -2,6 +2,7 @@ import numpy as np
 import torch
 from torch import nn
 from constants import *
+import pandas as pd
 
 
 class InvertibleFunction:
@@ -27,7 +28,7 @@ class InvertibleFunction:
 
     def inverse(self, y):
         h = np.dot(self.A_inv, (y - self.c).T).T
-        h = np.arctanh(np.clip(h, -0.999999, 0.999999))  # clip for numerical stability
+        h = np.arctanh(np.clip(h, -0.999999, 0.999999))
         W = np.dot(self.B_inv, (h - self.b).T).T
         return W
     
@@ -37,37 +38,40 @@ def sample_sfm_confounded(n_samples, decoder, seed=42):
     torch.manual_seed(seed)
 
     U_xz = np.random.randn(n_samples, 1)
-    U_x  = np.random.randn(n_samples, 1) * sigma_X
-    U_z  = np.random.randn(n_samples, 1) * sigma_Z
-    
-    inv_f = InvertibleFunction(dim=DIM_W)
+    U_x = np.random.randn(n_samples, 1) * sigma_X
+    U_z = np.random.randn(n_samples, 1) * sigma_Z
 
     X = (U_xz + U_x > 0).astype(float)
-    Z = a * U_xz + b * U_z            
+    Z = a * U_xz + b * U_z
 
-    XZ = np.concatenate([X, Z], axis=1)
-    W = XZ @ A.T + np.random.randn(n_samples, DIM_W) * sigma_W
-    
-    W_prime = inv_f.forward(W)
-    
-    logits = beta_1 * X.squeeze() + beta_2 * Z.squeeze() + W @ beta_3 + np.random.randn(n_samples) * sigma_Y
+    XZ = np.concatenate([X, Z, 1-X], axis=1)
+    W = XZ @ A + np.random.randn(n_samples, DIM_W) * sigma_W
+
+    logits = (
+        (1 - X).squeeze() * (W @ beta_3_low + gamma_0)
+        + X.squeeze() * (W @ beta_3_high + gamma_1)
+        + beta_2 * Z.squeeze()
+        + np.random.randn(n_samples) * sigma_Y
+    )
+
     Y = (logits > 0).astype(int)
-    
 
     W_tensor = torch.tensor(W, dtype=torch.float32)
     images = decoder(W_tensor)
     
+    invertible_func = InvertibleFunction(dim=DIM_W)
+    W_prime = invertible_func.forward(W_tensor.numpy())
+    W_prime_tensor = torch.tensor(W_prime, dtype=torch.float32)
+    W_prime_tensor = W_prime_tensor.view(W_tensor.shape[0], -1)
 
     return {
         'X': torch.tensor(X, dtype=torch.float32),
         'Z': torch.tensor(Z, dtype=torch.float32),
         'W': W_tensor,
-        'W_prime': torch.tensor(W_prime, dtype=torch.float32),
+        'W_prime': W_prime_tensor,
         'Y': torch.tensor(Y, dtype=torch.long),
         'image': images
     }
-    
-import pandas as pd
 
 def dump_sfm_to_csv(data, csv_path):
     B, _, H, W = data['image'].shape
