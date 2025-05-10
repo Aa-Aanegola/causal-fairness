@@ -4,7 +4,7 @@ data:
   # allowed_views: ['AP', 'PA']
   # image_size: 224
   # num_workers: 8
-  path: /insomnia001/depts/edu/COMSE6998/aa5506/causal-fairness/synth_data/data/synth_data_01481011.pt
+  path: /insomnia001/depts/edu/COMSE6998/aa5506/causal-fairness/synth_data/data/synth_data_new.pt
   batch_size: 256
   image_size: 32
   num_workers: 8
@@ -30,7 +30,7 @@ simclr:
     lr: 0.03
     momentum: 0.9
     weight_decay: 0.0001
-    max_epochs: 1000
+    max_epochs: 500
   
   pl: 
     log_progress_bar: false
@@ -44,16 +44,16 @@ oracle:
   hidden_dim: 128
   lr: 0.001
   weight_decay: 0.0001
-  batch_size: 64
-  max_epochs: 20
+  batch_size: 128
+  max_epochs: 30
   save_dir: ./ckpt/oracle
 
   pl: 
     log_progress_bar: true
 
 student:
-  encoder_ckpt: /insomnia001/depts/edu/COMSE6998/aa5506/causal-fairness/feature_extractors/SimCLR/ckpt/encoder/simclr-epoch=487-train_loss_ssl=0.6879.ckpt
-  teacher_ckpt: /insomnia001/depts/edu/COMSE6998/aa5506/causal-fairness/feature_extractors/SimCLR/ckpt/oracle/teacher-epoch=24-val_loss=0.16.ckpt
+  encoder_ckpt: /insomnia001/depts/edu/COMSE6998/aa5506/causal-fairness/feature_extractors/SimCLR/ckpt/encoder/may10-new-data.ckpt
+  teacher_ckpt: /insomnia001/depts/edu/COMSE6998/aa5506/causal-fairness/feature_extractors/SimCLR/ckpt/oracle/teacher-epoch=26-val_loss=0.46.ckpt
   fine_tune_encoder: true
   hidden_dim: 32
   covariate_dim: 2

@@ -10,8 +10,8 @@ from utils import ImgDatasetWithCovars, preprocess_img
 from tqdm import tqdm
 from collections import defaultdict
 
-ckpt_path = "/insomnia001/depts/edu/COMSE6998/aa5506/causal-fairness/feature_extractors/SimCLR/ckpt/student/lightning_logs/version_14/checkpoints/epoch=9-step=3910.ckpt"
-data_path = "/insomnia001/depts/edu/COMSE6998/aa5506/causal-fairness/synth_data/data/synth_data_0148_32x32_big.pt"
+ckpt_path = "/insomnia001/depts/edu/COMSE6998/aa5506/causal-fairness/feature_extractors/SimCLR/ckpt/student/lightning_logs/version_15/checkpoints/epoch=9-step=3910.ckpt"
+data_path = "/insomnia001/depts/edu/COMSE6998/aa5506/causal-fairness/synth_data/data/synth_data_new.pt"
 
 st = StudentTrainer.load_from_checkpoint(ckpt_path)
 encoder = st.student

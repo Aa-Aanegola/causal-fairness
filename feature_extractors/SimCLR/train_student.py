@@ -48,28 +48,28 @@ trainer = pl.Trainer(
 
 trainer.fit(model, train_dataloader, val_dataloader)
 
-full_data = torch.load(data_cfg['path'])
-full_data['image'] = preprocess_img(full_data['image'])
-full_dataset = ImgDatasetWithCovars(full_data, range(len(full_data['image'])))
-full_dataloader = DataLoader(
-    full_dataset,
-    batch_size=data_cfg["batch_size"],
-    shuffle=False,
-    num_workers=data_cfg["num_workers"]
-)
+# full_data = torch.load(data_cfg['path'])
+# full_data['image'] = preprocess_img(full_data['image'])
+# full_dataset = ImgDatasetWithCovars(full_data, range(len(full_data['image'])))
+# full_dataloader = DataLoader(
+#     full_dataset,
+#     batch_size=data_cfg["batch_size"],
+#     shuffle=False,
+#     num_workers=data_cfg["num_workers"]
+# )
 
-encoder = model.student
+# encoder = model.student
 
-encoder.eval()
-new_data = defaultdict(list)
+# encoder.eval()
+# new_data = defaultdict(list)
 
-for batch in tqdm(full_dataloader):
-    images = batch['image'].to(encoder.device)
-    embeddings = encoder.embed(images)
+# for batch in tqdm(full_dataloader):
+#     images = batch['image'].to(encoder.device)
+#     embeddings = encoder.embed(images)
 
-    for key in batch:
-        new_data[key].append(batch[key].cpu())
-    new_data['embedding'].append(embeddings.cpu())
+#     for key in batch:
+#         new_data[key].append(batch[key].cpu())
+#     new_data['embedding'].append(embeddings.cpu())
 
-final_data = {k: torch.cat(v, dim=0) for k, v in new_data.items()}
-torch.save(final_data, student_cfg['save_dir'] + '/data_with_embeddings.pt')
+# final_data = {k: torch.cat(v, dim=0) for k, v in new_data.items()}
+# torch.save(final_data, student_cfg['save_dir'] + '/data_with_embeddings.pt')

@@ -42,4 +42,8 @@ if __name__ == "__main__":
     print("X=1, Y=0",len(df[(df['X'] == 1) & (df['Y'] == 0)]))
     print("X=0, Y=1",len(df[(df['X'] == 0) & (df['Y'] == 1)]))
     print("X=0, Y=0",len(df[(df['X'] == 0) & (df['Y'] == 0)]))
+    print("X=1, D=0", len(df[(df['X'] == 1) & (df['D'] == 0)]))
+    print("X=0, D=1", len(df[(df['X'] == 0) & (df['D'] == 1)]))
+    print("X=0, D=0", len(df[(df['X'] == 0) & (df['D'] == 0)]))
+    print("X=1, D=1", len(df[(df['X'] == 1) & (df['D'] == 1)]))
     print(len(df))

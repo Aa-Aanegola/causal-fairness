@@ -31,6 +31,38 @@ class InvertibleFunction:
         h = np.arctanh(np.clip(h, -0.999999, 0.999999))
         W = np.dot(self.B_inv, (h - self.b).T).T
         return W
+
+def structured_decision(images, X, Z, threshold=0.5):
+    B = images.shape[0]
+    flat_img = images.view(B, -1)
+    brightness = flat_img.mean(dim=1)
+    noise_level = images.std(dim=(1, 2, 3))
+    vertical_contrast = (images[:, 0, :, 1:] - images[:, 0, :, :-1]).abs().mean(dim=2).mean(dim=1)
+    central_intensity = images[:, 0, 14:18, 14:18].mean(dim=(1, 2))
+    shape_signal = central_intensity + vertical_contrast  # crude proxy for shape
+    circle_strength = vertical_contrast  # approximates W[0]
+    square_strength = central_intensity  # approximates W[1]
+    diagonal_pattern = vertical_contrast * 0.8  # approximates W[4]
+    radial_symmetry = noise_level * 0.5  # approximates W[11]
+    score = (
+        d_w['shape_signal'] * shape_signal +
+        d_w['circle_strength'] * circle_strength +
+        d_w['square_strength'] * square_strength +
+        d_w['diagonal_pattern'] * diagonal_pattern +
+        d_w['radial_symmetry'] * radial_symmetry +
+        d_w['brightness'] * brightness +
+        d_w['noise'] * noise_level +
+        d_w['vertical_contrast'] * vertical_contrast +
+        d_w['central_intensity'] * central_intensity +
+        d_w['x'] * X.view(-1) +
+        d_w['z'] * Z.view(-1) + 
+        d_w['x0'] * (1- X).view(-1)
+    )
+    probs = torch.sigmoid(score)
+    D = (probs > threshold).int().view(-1, 1)
+    return D, score
+
+
     
     
 def sample_sfm_confounded(n_samples, decoder, seed=42):
@@ -43,33 +75,37 @@ def sample_sfm_confounded(n_samples, decoder, seed=42):
 
     X = (U_xz + U_x > 0).astype(float)
     Z = a * U_xz + b * U_z
-
     XZ = np.concatenate([X, Z, 1-X], axis=1)
     W = XZ @ A + np.random.randn(n_samples, DIM_W) * sigma_W
-
-    logits = (
-        (1 - X).squeeze() * (W @ beta_3_low + gamma_0)
-        + X.squeeze() * (W @ beta_3_high + gamma_1)
-        + beta_2 * Z.squeeze()
-        + np.random.randn(n_samples) * sigma_Y
-    )
-
-    Y = (logits > 0).astype(int)
-
     W_tensor = torch.tensor(W, dtype=torch.float32)
     images = decoder(W_tensor)
+
+    # Decision based on image + features
+    X_tensor = torch.tensor(X, dtype=torch.float32)
+    Z_tensor = torch.tensor(Z, dtype=torch.float32)
+    D, _ = structured_decision(images, X_tensor, Z_tensor, d_threshold)
     
+    # Final outcome Y
+    logits = (
+        (1 - X_tensor).squeeze() * (W_tensor @ torch.tensor(beta_3_low, dtype=torch.float32) + gamma_0) +
+        X_tensor.squeeze() * (W_tensor @ torch.tensor(beta_3_high, dtype=torch.float32) + gamma_1) +
+        beta_D * D.squeeze() +
+        beta_2 * Z_tensor.squeeze() +
+        torch.randn(n_samples) * sigma_Y
+    )
+    Y = (logits > 0).int()
+
     invertible_func = InvertibleFunction(dim=DIM_W)
     W_prime = invertible_func.forward(W_tensor.numpy())
-    W_prime_tensor = torch.tensor(W_prime, dtype=torch.float32)
-    W_prime_tensor = W_prime_tensor.view(W_tensor.shape[0], -1)
+    W_prime_tensor = torch.tensor(W_prime, dtype=torch.float32).view(W_tensor.shape[0], -1)
 
     return {
-        'X': torch.tensor(X, dtype=torch.float32),
-        'Z': torch.tensor(Z, dtype=torch.float32),
+        'X': X_tensor,
+        'Z': Z_tensor,
         'W': W_tensor,
         'W_prime': W_prime_tensor,
-        'Y': torch.tensor(Y, dtype=torch.long),
+        'Y': Y,
+        'D': D,
         'image': images
     }
 
@@ -81,6 +117,7 @@ def dump_sfm_to_csv(data, csv_path):
     X = data['X'].numpy().squeeze()
     Z = data['Z'].numpy().squeeze()
     Y = data['Y'].numpy().squeeze()
+    D = data['D'].numpy().squeeze()
     
     inv_f = InvertibleFunction(dim=16)
     
@@ -98,5 +135,6 @@ def dump_sfm_to_csv(data, csv_path):
     df['X'] = X
     df['Z'] = Z
     df['Y'] = Y
-
+    df['D'] = D
+    
     df.to_csv(csv_path, index=False)
