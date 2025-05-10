@@ -33,17 +33,40 @@ class InvertibleFunction:
         return W
 
 def structured_decision(images, X, Z, threshold=0.5):
+    import torch.nn.functional as F
+    from scipy.ndimage import sobel
+    import numpy as np
+
     B = images.shape[0]
-    flat_img = images.view(B, -1)
-    brightness = flat_img.mean(dim=1)
-    noise_level = images.std(dim=(1, 2, 3))
-    vertical_contrast = (images[:, 0, :, 1:] - images[:, 0, :, :-1]).abs().mean(dim=2).mean(dim=1)
-    central_intensity = images[:, 0, 14:18, 14:18].mean(dim=(1, 2))
-    shape_signal = central_intensity + vertical_contrast  # crude proxy for shape
-    circle_strength = vertical_contrast  # approximates W[0]
-    square_strength = central_intensity  # approximates W[1]
-    diagonal_pattern = vertical_contrast * 0.8  # approximates W[4]
-    radial_symmetry = noise_level * 0.5  # approximates W[11]
+    flat_img = images.view(B, IMG_SHAPE[0], IMG_SHAPE[1]).cpu().numpy()
+
+    brightness, noise_level, edge_strength, central_intensity, radial_symmetry = [], [], [], [], []
+
+    for img in flat_img:
+        brightness.append(img.mean())
+        noise_level.append(img.std())
+        sobel_x = sobel(img, axis=0)
+        sobel_y = sobel(img, axis=1)
+        edge_strength.append(np.sqrt(sobel_x**2 + sobel_y**2).mean())
+        central = img[14:18, 14:18]
+        central_intensity.append(central.mean())
+        fft_var = np.var(np.fft.fftshift(np.fft.fft2(img)).real)
+        radial_symmetry.append(fft_var)
+
+    brightness = torch.tensor(brightness)
+    noise_level = torch.tensor(noise_level)
+    edge_strength = torch.tensor(edge_strength)
+    central_intensity = torch.tensor(central_intensity)
+    radial_symmetry = torch.tensor(radial_symmetry)
+    radial_symmetry = (radial_symmetry - radial_symmetry.mean()) / (radial_symmetry.std() + 1e-8)
+
+    # Normalized shape proxies
+    shape_signal = edge_strength + central_intensity
+    circle_strength = edge_strength
+    square_strength = central_intensity
+    diagonal_pattern = edge_strength * 0.8
+    
+
     score = (
         d_w['shape_signal'] * shape_signal +
         d_w['circle_strength'] * circle_strength +
@@ -52,12 +75,13 @@ def structured_decision(images, X, Z, threshold=0.5):
         d_w['radial_symmetry'] * radial_symmetry +
         d_w['brightness'] * brightness +
         d_w['noise'] * noise_level +
-        d_w['vertical_contrast'] * vertical_contrast +
+        d_w['vertical_contrast'] * edge_strength +
         d_w['central_intensity'] * central_intensity +
         d_w['x'] * X.view(-1) +
-        d_w['z'] * Z.view(-1) + 
-        d_w['x0'] * (1- X).view(-1)
+        d_w['z'] * Z.view(-1) +
+        (1 - X.view(-1)) * d_w['x0']
     )
+
     probs = torch.sigmoid(score)
     D = (probs > threshold).int().view(-1, 1)
     return D, score
