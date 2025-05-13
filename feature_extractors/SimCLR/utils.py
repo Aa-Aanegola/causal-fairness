@@ -80,6 +80,7 @@ class ImgDatasetWithCovars(Dataset):
         z = self.data['Z'][index]
         w = self.data['W'][index]
         w_prime = self.data['W_prime'][index]
+        d = self.data['D'][index]
         
         return {
             'image': img,
@@ -87,5 +88,6 @@ class ImgDatasetWithCovars(Dataset):
             'x': x,
             'z': z,
             'w': w,
-            'w_prime': w_prime
+            'w_prime': w_prime,
+            'd': d
         }

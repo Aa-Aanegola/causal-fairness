@@ -10,15 +10,15 @@ from utils import ImgDatasetWithCovars, preprocess_img
 from tqdm import tqdm
 from collections import defaultdict
 
-ckpt_path = "/insomnia001/depts/edu/COMSE6998/aa5506/causal-fairness/feature_extractors/SimCLR/ckpt/student/lightning_logs/version_15/checkpoints/epoch=9-step=3910.ckpt"
-data_path = "/insomnia001/depts/edu/COMSE6998/aa5506/causal-fairness/synth_data/data/synth_data_new.pt"
+ckpt_path = "/insomnia001/depts/edu/COMSE6998/aa5506/causal-fairness/feature_extractors/SimCLR/ckpt/student/lightning_logs/version_32/checkpoints/epoch=9-step=3910.ckpt"
+data_path = "/insomnia001/depts/edu/COMSE6998/aa5506/causal-fairness/synth_data/data/with_d_100k.pt"
 
 st = StudentTrainer.load_from_checkpoint(ckpt_path)
-encoder = st.student
-encoder.eval()
 
 full_data = torch.load(data_path)
+print(full_data.keys())
 full_data['image'] = preprocess_img(full_data['image'])
+assert torch.isnan(full_data['image']).any() == False, "Images should not contain NaN values"
 full_dataset = ImgDatasetWithCovars(full_data, range(len(full_data['image'])))
 full_dataloader = DataLoader(
     full_dataset,
@@ -27,16 +27,5 @@ full_dataloader = DataLoader(
     num_workers=4
 )
 
-new_data = defaultdict(list)
-
-with torch.no_grad():
-    for batch in tqdm(full_dataloader):
-        images = batch['image'].to(encoder.device)
-        embeddings = encoder.embed(images)
-
-        for key in batch:
-            new_data[key].append(batch[key].cpu())
-        new_data['embedding'].append(embeddings.cpu())
-
-final_data = {k: torch.cat(v, dim=0) for k, v in new_data.items()}
-torch.save(final_data, 'data_with_embeddings.pt')
+full_dat = st.extract_embeddings(full_dataloader)
+torch.save(full_dat, "data_with_embeddings.pt")

@@ -13,11 +13,12 @@ print(data.keys())
 
 data['image'] = data['image'].numpy()
 data['embedding'] = data['embedding'].numpy()
-data['Y'] = data['y'].numpy()
-data['X'] = data['x'].numpy()
-data['Z'] = data['z'].numpy()
+data['Y'] = data['y'].numpy().squeeze()
+data['X'] = data['x'].numpy().squeeze()
+data['Z'] = data['z'].numpy().squeeze()
 data['W'] = data['w'].numpy()
 data['W_prime'] = data['w_prime'].numpy()
+data['D'] = data['d'].numpy().squeeze()
 
 # Convert the data to a pandas DataFrame where we split all image, emb, w, w_prime into separate columns
 def flatten_to_columns(key, arr):
@@ -30,7 +31,7 @@ def flatten_to_columns(key, arr):
         return {f"{key}_{i}": flat[:, i] for i in range(flat.shape[1])}
 
 flat_dict = {}
-for key in ['image', 'embedding', 'W', 'W_prime', 'Y', 'X', 'Z']:
+for key in ['image', 'embedding', 'W', 'W_prime', 'Y', 'X', 'Z', 'D']:
     flat_dict.update(flatten_to_columns(key, data[key]))
 
 df = pd.DataFrame(flat_dict)

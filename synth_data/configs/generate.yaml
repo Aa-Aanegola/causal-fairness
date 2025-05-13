@@ -1,4 +1,4 @@
 image_size: 32
 # keep_layers: [0, 1, 4, 8]
-samples: 10000
-base_path: ./data/with_d_test
+samples: 100000
+base_path: ./data/with_d_100k

@@ -17,3 +17,4 @@ plots/
 *lightning_logs*
 *checkpoints*
 *.log
+*conda-pkgs*

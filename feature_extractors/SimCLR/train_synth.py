@@ -67,7 +67,7 @@ checkpoint_callback = ModelCheckpoint(
     save_top_k=1,
     monitor="val_alignment",
     mode="min",
-    filename="simclr-{epoch:02d}-{train_loss_ssl:.4f}",
+    filename="may10-with-d",
     save_weights_only=True
 )
 lr_monitor = LearningRateMonitor(logging_interval='epoch')

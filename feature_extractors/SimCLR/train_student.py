@@ -20,6 +20,7 @@ data_cfg = cfg["data"]
 
 data = torch.load(data_cfg['path'])
 data['image'] = preprocess_img(data['image'])
+assert data['image'].isnan().any() == False, "NaN values found in images"
 train_dataset = ImgDatasetWithCovars(data, range(len(data['image'])))
 
 train_dataloader = DataLoader(
@@ -47,6 +48,8 @@ trainer = pl.Trainer(
 )
 
 trainer.fit(model, train_dataloader, val_dataloader)
+dat = model.extract_embeddings(val_dataloader)
+torch.save(dat, "data_with_embeddings.pt")
 
 # full_data = torch.load(data_cfg['path'])
 # full_data['image'] = preprocess_img(full_data['image'])

@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from lightly.loss import NTXentLoss
 from lightly.models.modules.heads import SimCLRProjectionHead
 from torchmetrics.classification import BinaryAUROC, BinaryF1Score, BinaryPrecision, BinaryRecall
+from collections import defaultdict
 
 def uniformity_loss(z, t=2):
     z = torch.nn.functional.normalize(z, dim=1)
@@ -193,18 +194,18 @@ class TeacherModel(pl.LightningModule):
         return self.classifier(xz)
 
     def training_step(self, batch, batch_idx):
-        image, x, z, y = batch['image'], batch['x'], batch['z'], batch['y']
+        image, x, z, y = batch['image'], batch['x'], batch['z'], batch['d'].squeeze()
         covars = torch.stack([x, z], dim=1).float()
         logits = self(image, covars)
-        loss = self.loss_fn(logits, y)
+        loss = self.loss_fn(logits, y.long())
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=self.cfg['pl']['log_progress_bar'])
         return loss
 
     def validation_step(self, batch, batch_idx):
-        image, x, z, y = batch['image'], batch['x'], batch['z'], batch['y']
+        image, x, z, y = batch['image'], batch['x'], batch['z'], batch['d'].squeeze()
         covars = torch.stack([x, z], dim=1).float()
         logits = self(image, covars)
-        loss = self.loss_fn(logits, y)
+        loss = self.loss_fn(logits, y.long())
         
         preds = torch.softmax(logits, dim=1)[:, 1]
         class_preds = (preds > 0.5).long()
@@ -252,12 +253,9 @@ class StudentModel(pl.LightningModule):
         )
     
     def forward(self, image, covariates):
-        z = self.encoder(image)
+        z = F.normalize(self.encoder(image))
         xz = torch.cat([z, covariates.squeeze()], dim=1)
-        return self.classifier(xz)
-    
-    def embed(self, image):
-        return self.encoder(image)
+        return self.classifier(xz), z 
     
 class StudentTrainer(pl.LightningModule):
     def __init__(self, cfg):
@@ -285,13 +283,15 @@ class StudentTrainer(pl.LightningModule):
                     F.kl_div(q.log(), m, reduction='batchmean'))
 
     def training_step(self, batch, batch_idx):
-        image, x, z, y = batch['image'], batch['x'], batch['z'], batch['y']
+        image, x, z, y = batch['image'], batch['x'], batch['z'], batch['d'].squeeze()
         covars = torch.stack([x, z], dim=1).float()
 
-        logits_student = self.student(image, covars)
+        logits_student, emb = self.student(image, covars)
         logits_teacher = self.teacher(image, covars).detach()
+        
+        assert not torch.isnan(emb).any(), "NaNs in embeddings!"
 
-        loss_sup = self.loss_supervised(logits_student, y)
+        loss_sup = self.loss_supervised(logits_student, y.long())
         loss_align = self.js_divergence(logits_student, logits_teacher)
 
         loss = self.cfg['lambda_sup'] * loss_sup + self.cfg['lambda_align'] * loss_align
@@ -304,14 +304,16 @@ class StudentTrainer(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        image, x, z, y = batch['image'], batch['x'], batch['z'], batch['y']
+        image, x, z, y = batch['image'], batch['x'], batch['z'], batch['d'].squeeze()
         covars = torch.stack([x, z], dim=1).float()
 
-        logits_student = self.student(image, covars)
+        logits_student, emb = self.student(image, covars)
         logits_teacher = self.teacher(image, covars).detach()
 
-        loss_sup = self.loss_supervised(logits_student, y)
+        loss_sup = self.loss_supervised(logits_student, y.long())
         loss_align = self.js_divergence(logits_student, logits_teacher)
+        
+        assert not torch.isnan(emb).any(), "NaNs in embeddings!"
 
         loss = self.cfg['lambda_sup'] * loss_sup + self.cfg['lambda_align'] * loss_align
 
@@ -345,6 +347,30 @@ class StudentTrainer(pl.LightningModule):
         self.f1.reset()
         self.precision.reset()
         self.recall.reset()
+    
+    def extract_embeddings(self, dataloader):
+        self.eval()
+        all_data = defaultdict(list)
+        device = self.device
+        
+        with torch.no_grad():
+            for batch in dataloader:
+                image = batch['image'].to(device)
+                x = batch['x'].to(device)
+                z = batch['z'].to(device)
+                covars = torch.stack([x, z], dim=1).float()
+
+                logits, embeddings = self.student(image, covars)
+
+                assert not torch.isnan(embeddings).any(), "NaNs in embeddings!"
+
+                for key, val in batch.items():
+                    all_data[key].append(val.cpu())
+                all_data['embedding'].append(embeddings.cpu())
+        
+        final_data = {k: torch.cat(v, dim=0) for k, v in all_data.items()}
+        return final_data
+        
 
     def configure_optimizers(self):
         encoder_params = list(self.student.encoder.parameters())
