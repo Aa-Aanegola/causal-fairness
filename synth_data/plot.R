@@ -44,8 +44,8 @@ all_plots <- function(path, plot_path, img_dim=32, latent_dim=16, valid_latents 
         p <- autoplot(fair_decomp, decomp=decomp)
         ggsave(paste0(plot_path, "/tv_true_w_", decomp, ".png"), plot=p)
         
-        p <- autoplot(fair_decomp_prime, decomp=decomp)
-        ggsave(paste0(plot_path, "/tv_prime_w_", decomp, ".png"), plot=p)
+        # p <- autoplot(fair_decomp_prime, decomp=decomp)
+        # ggsave(paste0(plot_path, "/tv_prime_w_", decomp, ".png"), plot=p)
         
         p <- autoplot(fair_decomp_no_W, decomp=decomp)
         ggsave(paste0(plot_path, "/tv_no_w_", decomp, ".png"), plot=p)
@@ -53,7 +53,7 @@ all_plots <- function(path, plot_path, img_dim=32, latent_dim=16, valid_latents 
         p <- autoplot(fair_decomp_img, decomp=decomp)
         ggsave(paste0(plot_path, "/tv_img_", decomp, ".png"), plot=p)
 
-        # p <- autoplot(fair_decomp_emb, decomp=decomp)
-        # ggsave(paste0(plot_path, "/tv_emb_", decomp, ".png"), plot=p)
+        p <- autoplot(fair_decomp_emb, decomp=decomp)
+        ggsave(paste0(plot_path, "/tv_emb_", decomp, ".png"), plot=p)
     }
 }
