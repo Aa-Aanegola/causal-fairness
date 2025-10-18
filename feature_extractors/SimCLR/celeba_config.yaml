@@ -1,0 +1,103 @@
+data:
+  # CelebA dataset configuration
+  root_dir: /Users/aa-aanegola/Documents/f25/research/ci2/causal-fairness/data/celeba_dataset
+  batch_size: 256
+  image_size: 32  # Can be changed to 64 if needed
+  num_workers: 8
+  val_ratio: 0.2
+
+simclr:
+  encoder:
+    arch: resnet
+    in_channels: 3  # RGB instead of grayscale
+    resnet_layers: [1, 1, 1, 1]
+    bottleneck_dim: 128
+
+  projection_head:
+    hidden_dim: 128
+    output_dim: 128
+
+  loss:
+    temperature: 0.05
+    lambda_uniformity: 0.4
+
+  optimizer:
+    name: sgd
+    lr: 0.03
+    momentum: 0.9
+    weight_decay: 0.0001
+    max_epochs: 200
+  
+  pl: 
+    log_progress_bar: false
+    enable_progress_bar: false
+
+  save_dir: ckpt/celeba/encoder
+
+oracle:
+  in_channels: 3  # RGB instead of grayscale
+  covariate_dim: 3  # X (gender) + Z (age, attractiveness)
+  hidden_dim: 128
+  lr: 0.001
+  weight_decay: 0.0001
+  batch_size: 128
+  max_epochs: 30
+  save_dir: ./ckpt/celeba/oracle
+
+  outcome_var: y  # Smile detection as outcome
+
+  pl: 
+    log_progress_bar: true
+
+student:
+  encoder_ckpt: /Users/aa-aanegola/Documents/f25/research/ci2/causal-fairness/feature_extractors/SimCLR/ckpt/celeba/encoder/simclr-celeba.ckpt
+  teacher_ckpt: /Users/aa-aanegola/Documents/f25/research/ci2/causal-fairness/feature_extractors/SimCLR/ckpt/celeba/oracle/teacher-celeba.ckpt
+  fine_tune_encoder: true
+  hidden_dim: 32
+  covariate_dim: 3  # X (gender) + Z (age, attractiveness)
+  lr: 0.001
+  batch_size: 64
+  max_epochs: 10
+  save_dir: ./ckpt/celeba/student
+  lambda_sup: 0.5
+  lambda_align: 1
+
+  outcome_var: y  # Smile detection as outcome
+
+  pl: 
+    log_progress_bar: true
+
+logging:
+  log_interval: 10
+  eval_interval: 1
+  seed: 42
+  enable_progress_bar: true
+
+# CelebA-specific causal variable definitions
+causal_variables:
+  X:
+    name: "Gender"
+    description: "Male=0, Female=1"
+    attribute: "Male"
+    type: "binary"
+  
+  Z:
+    name: "Age + Attractiveness"
+    description: "2D continuous vector: [age, attractiveness]"
+    attributes: ["Young", "Attractive"]
+    type: "continuous_2d"
+    range: [0, 1]
+  
+  Y:
+    name: "Smile Detection"
+    description: "Binary smile detection outcome"
+    attribute: "Smiling"
+    type: "binary"
+
+# Expected causal relationships
+causal_structure:
+  description: "Gender (X) and Age+Attractiveness (Z) are confounded, both influence Smile Detection (Y)"
+  relationships:
+    - "X -> Y (gender influences smile detection)"
+    - "Z -> Y (age and attractiveness influence smile detection)"
+    - "X <-> Z (gender and age/attractiveness are confounded)"

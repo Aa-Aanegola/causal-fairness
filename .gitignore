@@ -18,3 +18,4 @@ plots/
 *checkpoints*
 *.log
 *conda-pkgs*
+data/
