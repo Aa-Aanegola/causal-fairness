@@ -195,7 +195,7 @@ class TeacherModel(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         image, x, z, y = batch['image'], batch['x'], batch['z'], batch['y'].squeeze()
-        covars = torch.stack([x, z], dim=1).float()
+        covars = torch.cat([x.unsqueeze(1), z], dim=1).float()
         logits = self(image, covars)
         loss = self.loss_fn(logits, y.long())
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=self.cfg['pl']['log_progress_bar'])
@@ -203,7 +203,7 @@ class TeacherModel(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         image, x, z, y = batch['image'], batch['x'], batch['z'], batch['y'].squeeze()
-        covars = torch.stack([x, z], dim=1).float()
+        covars = torch.cat([x.unsqueeze(1), z], dim=1).float()
         logits = self(image, covars)
         loss = self.loss_fn(logits, y.long())
         
@@ -284,7 +284,7 @@ class StudentTrainer(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         image, x, z, y = batch['image'], batch['x'], batch['z'], batch['y'].squeeze()
-        covars = torch.stack([x, z], dim=1).float()
+        covars = torch.cat([x.unsqueeze(1), z], dim=1).float()
 
         logits_student, emb = self.student(image, covars)
         logits_teacher = self.teacher(image, covars).detach()
@@ -305,7 +305,7 @@ class StudentTrainer(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         image, x, z, y = batch['image'], batch['x'], batch['z'], batch['y'].squeeze()
-        covars = torch.stack([x, z], dim=1).float()
+        covars = torch.cat([x.unsqueeze(1), z], dim=1).float()
 
         logits_student, emb = self.student(image, covars)
         logits_teacher = self.teacher(image, covars).detach()

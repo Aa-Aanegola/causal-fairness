@@ -1,6 +1,6 @@
 data:
   # CelebA dataset configuration
-  root_dir: /Users/aa-aanegola/Documents/f25/research/ci2/causal-fairness/data/celeba_dataset
+  root_dir: /insomnia001/depts/edu/users/aa5506/causal-fairness/data/celeba_dataset
   batch_size: 256
   image_size: 32  # Can be changed to 64 if needed
   num_workers: 8
@@ -26,7 +26,7 @@ simclr:
     lr: 0.03
     momentum: 0.9
     weight_decay: 0.0001
-    max_epochs: 200
+    max_epochs: 100
   
   pl: 
     log_progress_bar: false
@@ -50,8 +50,8 @@ oracle:
     log_progress_bar: true
 
 student:
-  encoder_ckpt: /Users/aa-aanegola/Documents/f25/research/ci2/causal-fairness/feature_extractors/SimCLR/ckpt/celeba/encoder/simclr-celeba.ckpt
-  teacher_ckpt: /Users/aa-aanegola/Documents/f25/research/ci2/causal-fairness/feature_extractors/SimCLR/ckpt/celeba/oracle/teacher-celeba.ckpt
+  encoder_ckpt: /insomnia001/depts/edu/users/aa5506/causal-fairness/feature_extractors/SimCLR/ckpt/celeba/encoder/simclr-celeba.ckpt
+  teacher_ckpt: /insomnia001/depts/edu/users/aa5506/causal-fairness/feature_extractors/SimCLR/ckpt/celeba/oracle/teacher-celeba.ckpt
   fine_tune_encoder: true
   hidden_dim: 32
   covariate_dim: 3  # X (gender) + Z (age, attractiveness)

@@ -1,77 +1,75 @@
+# train_celeba_student.py
 import yaml
 import os
+import torch
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
-
 from torch.utils.data import DataLoader
-import torch
-from model import StudentTrainer
-from celeba_utils import create_celeba_causal_data, CelebADatasetWithCovars
-from tqdm import tqdm
-from collections import defaultdict
 
-torch.set_float32_matmul_precision('high')
+from model import StudentTrainer
+from celeba_utils import create_celeba_dataloaders
+
+torch.set_float32_matmul_precision("high")
+
 
 def main():
-    # Load configuration
     with open("celeba_config.yaml", "r") as f:
         cfg = yaml.safe_load(f)
-        
+
     student_cfg = cfg["student"]
     data_cfg = cfg["data"]
 
-    # Create CelebA causal data
-    print("Loading CelebA data...")
-    data = create_celeba_causal_data(
-        root_dir=data_cfg["root_dir"],
-        split='train',
-        image_size=data_cfg["image_size"]
-    )
-    
-    print(f"Data loaded: {[(k, v.shape) for k, v in data.items()]}")
+    root_dir = data_cfg["root_dir"]
+    print(f"[INFO] Using CelebA root: {root_dir}")
+    print(f"[INFO] CWD: {os.getcwd()}")
 
-    # Create dataset
-    train_dataset = CelebADatasetWithCovars(data, range(len(data['image'])))
-
-    # Create dataloaders
-    train_dataloader = DataLoader(
-        train_dataset,
+    print("[INFO] Creating dataloaders...")
+    train_loader, val_loader = create_celeba_dataloaders(
+        root_dir=root_dir,
         batch_size=data_cfg["batch_size"],
-        shuffle=True,
-        num_workers=data_cfg["num_workers"]
+        num_workers=data_cfg["num_workers"],
+        image_size=data_cfg["image_size"],
+        val_ratio=data_cfg["val_ratio"],
     )
 
-    val_dataloader = DataLoader(
-        train_dataset,
-        batch_size=data_cfg["batch_size"],
-        shuffle=False,
-        num_workers=data_cfg["num_workers"]
-    )
+    print(f"[INFO] Train batches: {len(train_loader)}")
+    print(f"[INFO] Val batches: {len(val_loader)}")
 
-    print(f"Total samples: {len(train_dataset)}")
-
-    # Create student trainer model
     model = StudentTrainer(student_cfg)
 
-    # Create trainer
+    os.makedirs(student_cfg["save_dir"], exist_ok=True)
+
+    checkpoint_callback = ModelCheckpoint(
+        monitor="val_loss",
+        dirpath=student_cfg["save_dir"],
+        filename="student-celeba",
+        save_top_k=1,
+        mode="min",
+        save_weights_only=True,
+    )
+    lr_monitor = LearningRateMonitor(logging_interval="epoch")
+
     trainer = pl.Trainer(
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
+        devices=1,
         max_epochs=student_cfg["max_epochs"],
+        callbacks=[checkpoint_callback, lr_monitor],
         default_root_dir=student_cfg["save_dir"],
         log_every_n_steps=cfg["logging"]["log_interval"],
-        enable_progress_bar=cfg["logging"]["enable_progress_bar"]
+        enable_progress_bar=cfg["logging"]["enable_progress_bar"],
     )
 
-    # Train the model
-    print("Starting student training on CelebA...")
-    trainer.fit(model, train_dataloader, val_dataloader)
-    
-    # Extract embeddings
-    print("Extracting embeddings...")
-    embeddings_data = model.extract_embeddings(val_dataloader)
-    torch.save(embeddings_data, f"{student_cfg['save_dir']}/celeba_data_with_embeddings.pt")
-    
-    print(f"Training completed! Checkpoints and embeddings saved to: {student_cfg['save_dir']}")
+    print("[INFO] Starting student training on CelebA...")
+    trainer.fit(model, train_loader, val_loader)
+    print(f"[DONE] Training completed. Checkpoints in {student_cfg['save_dir']}")
+
+    print("[INFO] Extracting embeddings from validation set...")
+    model.eval()
+    embeddings = model.extract_embeddings(val_loader)
+    embeddings_path = os.path.join(student_cfg["save_dir"], "celeba_embeddings.pt")
+    torch.save(embeddings, embeddings_path)
+    print(f"[DONE] Embeddings saved to {embeddings_path}")
+
 
 if __name__ == "__main__":
     main()

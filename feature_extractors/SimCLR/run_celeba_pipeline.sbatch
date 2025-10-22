@@ -1,12 +1,11 @@
 #!/bin/bash
 #SBATCH --job-name=celeba_pipeline
-#SBATCH --output=logs/celeba_pipeline_%j.out
-#SBATCH --error=logs/celeba_pipeline_%j.err
-#SBATCH --time=24:00:00
-#SBATCH --partition=gpu
+#SBATCH --output=/insomnia001/depts/edu/users/aa5506/causal-fairness/feature_extractors/SimCLR/logs/celeba_pipeline_%j.out
+#SBATCH --error=/insomnia001/depts/edu/users/aa5506/causal-fairness/feature_extractors/SimCLR/logs/celeba_pipeline_%j.err
+#SBATCH --time=8:00:00
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
+#SBATCH --mem=24G
 #SBATCH --nodes=1
 #SBATCH --account=edu
 
@@ -132,17 +131,6 @@ fi
 if ! run_training "train_celeba_student.py" "Student" "$STUDENT_CHECKPOINT"; then
     echo "Student training failed"
     exit 1
-fi
-
-# Step 4: Run pipeline test
-echo "=========================================="
-echo "STEP 4: Pipeline Testing"
-echo "=========================================="
-echo "Running pipeline test..."
-if python test_celeba_pipeline.py; then
-    echo "✓ Pipeline test completed successfully"
-else
-    echo "⚠ Pipeline test failed, but training completed"
 fi
 
 # Final summary

@@ -38,7 +38,7 @@ def main():
         save_top_k=1,
         monitor="train_loss_ssl",
         mode="min",
-        filename="simclr-celeba-{epoch:02d}-{train_loss_ssl:.4f}",
+        filename="simclr",
         save_weights_only=True
     )
 

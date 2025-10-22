@@ -30,7 +30,7 @@ simclr:
     lr: 0.03
     momentum: 0.9
     weight_decay: 0.0001
-    max_epochs: 200
+    max_epochs: 150
   
   pl: 
     log_progress_bar: false
@@ -54,8 +54,8 @@ oracle:
     log_progress_bar: true
 
 student:
-  encoder_ckpt: /insomnia001/depts/edu/COMSE6998/aa5506/causal-fairness/feature_extractors/SimCLR/ckpt/encoder/may10-with-d.ckpt
-  teacher_ckpt: /insomnia001/depts/edu/COMSE6998/aa5506/causal-fairness/feature_extractors/SimCLR/ckpt/oracle/may10-teacher.ckpt
+  encoder_ckpt: /insomnia001/depts/edu/users/aa5506/causal-fairness/feature_extractors/SimCLR/ckpt/encoder/simclr.ckpt
+  teacher_ckpt: /insomnia001/depts/edu/COMSE6998/aa5506/causal-fairness/feature_extractors/SimCLR/ckpt/oracle/teacher.ckpt
   fine_tune_encoder: true
   hidden_dim: 32
   covariate_dim: 2

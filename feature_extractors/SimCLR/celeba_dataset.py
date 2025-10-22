@@ -5,106 +5,58 @@ from torchvision.datasets import CelebA
 import numpy as np
 from PIL import Image
 import os
+from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor
 
 class CelebACausalDataset(Dataset):
     """
-    CelebA dataset with causal variable mapping for fairness experiments.
-    
-    Causal Variables:
-    - X (Treatment): Gender (Male=0, Female=1)
-    - Z (Confounder): Attractiveness (continuous, derived from Attractive attribute)
-    - D (Decision): Smile Detection (binary, from Smiling attribute)
-    - Y (Outcome): Eyeglasses (binary, from Eyeglasses attribute)
+    Lightweight CelebA wrapper exposing causal variables.
+
+    Causal structure:
+        X = Gender (Male=0, Female=1)
+        Z = [Young, Attractive]
+        Y = Smiling
     """
-    
-    def __init__(self, root_dir, split='train', image_size=32, transform=None):
-        self.root_dir = root_dir
-        self.split = split
-        self.image_size = image_size
-        
-        # Load CelebA dataset
-        # Use the parent directory as root since torchvision expects specific structure
+
+    def __init__(self, root_dir, split="train", image_size=32):
         celeba_root = os.path.dirname(root_dir)
-        self.celeba_dataset = CelebA(
+        self.celeba = CelebA(
             root=celeba_root,
             split=split,
-            target_type='attr',
-            transform=None,  # We'll apply transforms manually
-            download=False
-        )
-        
-        # Define attribute indices
-        self.attr_names = [
-            '5_o_Clock_Shadow', 'Arched_Eyebrows', 'Attractive', 'Bags_Under_Eyes', 'Bald', 'Bangs',
-            'Big_Lips', 'Big_Nose', 'Black_Hair', 'Blond_Hair', 'Blurry', 'Brown_Hair', 'Bushy_Eyebrows',
-            'Chubby', 'Double_Chin', 'Eyeglasses', 'Goatee', 'Gray_Hair', 'Heavy_Makeup', 'High_Cheekbones',
-            'Male', 'Mouth_Slightly_Open', 'Mustache', 'Narrow_Eyes', 'No_Beard', 'Oval_Face', 'Pale_Skin',
-            'Pointy_Nose', 'Receding_Hairline', 'Rosy_Cheeks', 'Sideburns', 'Smiling', 'Straight_Hair',
-            'Wavy_Hair', 'Wearing_Earrings', 'Wearing_Hat', 'Wearing_Lipstick', 'Wearing_Necklace',
-            'Wearing_Necktie', 'Young'
-        ]
-        
-        # Get indices for our causal variables
-        self.male_idx = self.attr_names.index('Male')
-        self.attractive_idx = self.attr_names.index('Attractive')
-        self.young_idx = self.attr_names.index('Young')
-        self.smiling_idx = self.attr_names.index('Smiling')
-        
-        # Default transform if none provided
-        if transform is None:
-            self.transform = transforms.Compose([
+            target_type="attr",
+            transform=transforms.Compose([
                 transforms.Resize((image_size, image_size)),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # RGB normalization
-            ])
-        else:
-            self.transform = transform
-            
-        # Pre-compute causal variables
-        self._precompute_causal_variables()
-    
-    def _precompute_causal_variables(self):
-        """Pre-compute all causal variables for efficiency."""
-        n_samples = len(self.celeba_dataset)
-        
-        self.X = torch.zeros(n_samples)  # Gender: Male=0, Female=1
-        self.Z = torch.zeros(n_samples, 2)  # Age + Attractiveness (2D continuous)
-        self.Y = torch.zeros(n_samples)   # Smile Detection
-        
-        for i in range(n_samples):
-            _, attributes = self.celeba_dataset[i]
-            
-            # X: Gender (Male=0, Female=1)
-            # CelebA Male attribute: -1=male, 1=female
-            self.X[i] = 1 if attributes[self.male_idx] == 1 else 0
-            
-            # Z: Age + Attractiveness (2D continuous)
-            # Age: Young=1, Old=0 (map from [-1,1] to [0,1])
-            age = (attributes[self.young_idx] + 1) / 2
-            # Attractiveness: map from [-1,1] to [0,1]
-            attractiveness = (attributes[self.attractive_idx] + 1) / 2
-            self.Z[i] = torch.tensor([age, attractiveness])
-            
-            # Y: Smile Detection (binary)
-            self.Y[i] = 1 if attributes[self.smiling_idx] == 1 else 0
-    
-    def __len__(self):
-        return len(self.celeba_dataset)
-    
-    def __getitem__(self, index):
-        image, _ = self.celeba_dataset[index]
-        
-        # Apply transforms
-        if self.transform:
-            image = self.transform(image)
-        
-        return {
-            'image': image,
-            'x': self.X[index],
-            'z': self.Z[index],
-            'y': self.Y[index]
+                transforms.Normalize(mean=[0.5]*3, std=[0.5]*3)
+            ]),
+            download=False,
+        )
+
+        names = self.celeba.attr_names
+        self.idx = {
+            "male": names.index("Male"),
+            "young": names.index("Young"),
+            "attractive": names.index("Attractive"),
+            "smiling": names.index("Smiling"),
         }
-    
+
+    def __len__(self):
+        return len(self.celeba)
+
+    def __getitem__(self, idx):
+        img, attrs = self.celeba[idx]
+        attrs = attrs.float()
+
+        x = (attrs[self.idx["male"]] + 1) / 2
+        z = torch.tensor([
+            (attrs[self.idx["young"]] + 1) / 2,
+            (attrs[self.idx["attractive"]] + 1) / 2
+        ], dtype=torch.float32)
+        y = (attrs[self.idx["smiling"]] + 1) / 2
+        y = y.long()
+
+        return {"image": img, "x": x, "z": z, "y": y}
+ 
     def get_causal_stats(self):
         """Get statistics about causal variables."""
         stats = {

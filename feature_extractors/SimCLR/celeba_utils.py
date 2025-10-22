@@ -3,6 +3,10 @@ import torchvision.transforms as transforms
 from torchvision.transforms.functional import to_pil_image
 from PIL import Image
 import numpy as np
+from tqdm import tqdm
+from torch.utils.data import DataLoader, random_split
+from celeba_dataset import CelebACausalDataset
+
 
 def preprocess_celeba_img(img):
     """
@@ -54,74 +58,83 @@ class CelebATransform:
         
         return self.base_transform(x), self.base_transform(x)
 
-
-class CelebADatasetWithCovars:
+def create_celeba_dataloaders(root_dir, batch_size=128, num_workers=8, image_size=32, val_ratio=0.2):
     """
-    CelebA dataset class compatible with the existing framework.
-    Maps CelebA causal variables to the expected format.
+    Create standard train/val dataloaders for causal training.
+    """
+    dataset = CelebACausalDataset(root_dir=root_dir, split="train", image_size=image_size)
+    n_total = len(dataset)
+    n_val = int(val_ratio * n_total)
+    n_train = n_total - n_val
+
+    train_dataset, val_dataset = random_split(dataset, [n_train, n_val])
+
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        pin_memory=True,
+        persistent_workers=True,
+    )
+
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=True,
+        persistent_workers=True,
+    )
+
+    return train_loader, val_loader
+
+
+def create_celeba_causal_data(root_dir, split="train", image_size=32):
+    """
+    Return a dictionary version (for backward compatibility with synthetic setup).
+    Still lazy — images load on-demand via the underlying Dataset.
+    """
+    dataset = CelebACausalDataset(root_dir=root_dir, split=split, image_size=image_size)
+    return {
+        "X": (dataset.celeba.attr[:, dataset.idx["male"]] + 1) / 2,
+        "Z": torch.stack([
+            (dataset.celeba.attr[:, dataset.idx["young"]] + 1) / 2,
+            (dataset.celeba.attr[:, dataset.idx["attractive"]] + 1) / 2,
+        ], dim=1),
+        "Y": (dataset.celeba.attr[:, dataset.idx["smiling"]] + 1) / 2,
+        "dataset": dataset,
+    }
+
+
+class CelebADatasetWithCovars(torch.utils.data.Dataset):
+    """
+    Lightweight wrapper to split CelebA data into train/val partitions.
     """
     def __init__(self, data, indices):
-        self.transform = transforms.Compose([
-            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
-        ])
+        base = data['dataset']
+        self.images = base.image_cache
+        self.X = base.X[indices]
+        self.Z = base.Z[indices]
+        self.Y = base.Y[indices]
         self.indices = indices
-        self.data = {}
-        
-        # Map CelebA data to expected format
-        for k, v in data.items():
-            self.data[k] = v[indices]
-        
-        # Normalize Z (age + attractiveness) if it exists
-        if 'Z' in self.data:
-            z_mean = self.data['Z'].mean(dim=0, keepdim=True)
-            z_std = self.data['Z'].std(dim=0, keepdim=True) + 1e-8
-            self.data['Z'] = (self.data['Z'] - z_mean) / z_std
-    
+        self.base = base
+
     def __len__(self):
-        return len(self.data['Y'])
-    
-    def __getitem__(self, index):
-        img = self.transform(self.data['image'][index])
-        y = self.data['Y'][index]
-        x = self.data['X'][index]
-        z = self.data['Z'][index]
-        
+        return len(self.indices)
+
+    def __getitem__(self, i):
+        idx = self.indices[i]
+        if self.images is not None:
+            img = self.images[idx]
+        else:
+            img = self.base.__getitem__(idx)['image']
         return {
             'image': img,
-            'y': y,
-            'x': x,
-            'z': z
+            'x': self.X[i],
+            'z': self.Z[i],
+            'y': self.Y[i]
         }
-
-
-def create_celeba_causal_data(root_dir, split='train', image_size=32):
-    """
-    Create CelebA data in the format expected by the causal framework.
-    Returns a dictionary with the same structure as synthetic data.
-    """
-    from celeba_dataset import CelebACausalDataset
-    
-    dataset = CelebACausalDataset(
-        root_dir=root_dir,
-        split=split,
-        image_size=image_size
-    )
-    
-    # Convert to the expected format
-    data = {
-        'X': dataset.X.unsqueeze(1),  # Add dimension to match synthetic format
-        'Z': dataset.Z,  # Keep 2D for age + attractiveness
-        'Y': dataset.Y.unsqueeze(1),
-        'image': torch.stack([dataset[i]['image'] for i in range(len(dataset))])
-    }
-    
-    # Create dummy W and W_prime for compatibility
-    # In real experiments, these would be learned features
-    n_samples = len(dataset)
-    data['W'] = torch.randn(n_samples, 16)  # 16D latent features
-    data['W_prime'] = torch.randn(n_samples, 16)  # Transformed features
-    
-    return data
 
 
 def analyze_celeba_causal_relationships(data):
